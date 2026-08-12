@@ -1,0 +1,18 @@
+{
+  "name": "controle-emprestimos",
+  "version": "1.0.0",
+  "description": "Controle de empréstimos de itens para professores/colaboradores",
+  "private": true,
+  "main": "server/server.js",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "start": "node server/server.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "express": "^4.19.2",
+    "express-session": "^1.18.0"
+  }
+}

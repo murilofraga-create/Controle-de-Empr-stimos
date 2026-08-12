@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Controle de Empréstimos de Itens</title>
+  <link rel="stylesheet" href="app-styles.css">
+  <script>
+    (function () {
+      var saved = localStorage.getItem('loanapp_theme');
+      var theme = saved || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      document.documentElement.setAttribute('data-theme', theme);
+    })();
+  </script>
+</head>
+<body>
+
+  <button id="theme-toggle-btn" class="theme-toggle" type="button" title="Alternar tema claro/escuro" aria-label="Alternar tema claro/escuro"></button>
+
+  <!-- LOGIN -->
+  <div id="login-screen" class="login-screen">
+    <form id="login-form" class="login-box">
+      <h1>Controle de Empréstimos</h1>
+      <p class="muted">Entre com sua conta para continuar.</p>
+      <label>Usuário
+        <input id="login-username" type="text" autocomplete="username" required>
+      </label>
+      <label>Senha
+        <input id="login-password" type="password" autocomplete="current-password" required>
+      </label>
+      <p id="login-error" class="error-msg"></p>
+      <button type="submit" class="btn primary">Entrar</button>
+    </form>
+  </div>
+
+  <!-- APP -->
+  <div id="app-screen" class="app-screen">
+    <header class="app-header">
+      <h1>Controle de Empréstimos</h1>
+      <nav class="tabs">
+        <button class="nav-btn active" data-tab="cadastro">Cadastro</button>
+        <button class="nav-btn" data-tab="emprestimos">Empréstimos</button>
+        <button class="nav-btn" data-tab="log" id="nav-log">Log de Atividades</button>
+        <button class="nav-btn" data-tab="admin" id="nav-admin">Administração</button>
+      </nav>
+      <div class="header-user">
+        <span id="current-user-name"></span>
+        <span id="theme-toggle-slot"></span>
+        <button id="change-pwd-btn" class="btn small ghost">Trocar senha</button>
+        <button id="logout-btn" class="btn small ghost">Sair</button>
+      </div>
+    </header>
+
+    <main>
+
+      <!-- TAB: CADASTRO -->
+      <section id="tab-cadastro" class="tab-section active">
+        <div class="dashboard-cards">
+          <div class="card">
+            <span class="card-value" id="stat-emprestados">0</span>
+            <span class="card-label">Itens emprestados no momento</span>
+          </div>
+          <div class="card card-warning">
+            <span class="card-value" id="stat-atrasados">0</span>
+            <span class="card-label">Em atraso de recolhimento</span>
+          </div>
+          <div class="card card-info">
+            <span class="card-value" id="stat-pendentes-hoje">0</span>
+            <span class="card-label">Agendamentos de hoje ainda não entregues</span>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>Registrar novo empréstimo</h2>
+          <p class="muted">Data: <strong id="form-today-date"></strong> (preenchida automaticamente)</p>
+          <p id="loan-form-hint" class="hint"></p>
+          <form id="loan-form" class="form-grid">
+            <label>Sala
+              <input id="loan-room" type="text" required>
+            </label>
+            <label>Professor/Funcionário
+              <input id="loan-person" type="text" required>
+            </label>
+            <label>Tipo de ocorrência
+              <select id="loan-occurrence" required>
+                <option value="Aula">Aula</option>
+                <option value="Evento">Evento</option>
+                <option value="Reunião">Reunião</option>
+                <option value="Departamento">Departamento</option>
+              </select>
+            </label>
+            <label>Item emprestado
+              <select id="loan-item" required></select>
+            </label>
+            <label>Turno
+              <select id="loan-shift" required>
+                <option value="Madrugada">Madrugada</option>
+                <option value="Matutino">Matutino</option>
+                <option value="Vespertino">Vespertino</option>
+                <option value="Noturno">Noturno</option>
+              </select>
+            </label>
+            <div class="form-actions">
+              <button type="submit" class="btn primary">Lançar empréstimo</button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <!-- TAB: EMPRÉSTIMOS -->
+      <section id="tab-emprestimos" class="tab-section">
+        <div class="panel">
+          <div class="filters-row">
+            <label>Turno
+              <div class="combo" id="combo-filter-shift">
+                <input type="text" class="combo-input" autocomplete="off" placeholder="Todos">
+                <input type="hidden" id="filter-shift">
+                <div class="combo-menu" hidden></div>
+              </div>
+            </label>
+            <label>Categoria
+              <div class="combo" id="combo-filter-category">
+                <input type="text" class="combo-input" autocomplete="off" placeholder="Todas as categorias">
+                <input type="hidden" id="filter-category">
+                <div class="combo-menu" hidden></div>
+              </div>
+            </label>
+            <label>Status
+              <div class="combo" id="combo-filter-status">
+                <input type="text" class="combo-input" autocomplete="off" placeholder="Todos">
+                <input type="hidden" id="filter-status">
+                <div class="combo-menu" hidden></div>
+              </div>
+            </label>
+            <label>Buscar (sala/professor)
+              <input id="filter-search" type="text" placeholder="Ex: Sala 12 ou João">
+            </label>
+            <button id="filter-clear" class="btn small ghost">Limpar filtros</button>
+            <span class="spacer"></span>
+            <button id="print-filtered-btn" class="btn small">Imprimir filtrado</button>
+            <button id="print-all-btn" class="btn small">Imprimir tudo</button>
+          </div>
+
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Data</th><th>Sala</th><th>Professor/Funcionário</th><th>Ocorrência</th>
+                  <th>Item</th><th>Categoria</th><th>Turno</th><th>Status</th><th>Registrado por</th><th>Ações</th>
+                </tr>
+              </thead>
+              <tbody id="loans-tbody"></tbody>
+            </table>
+          </div>
+          <p class="hint">Todo domingo, empréstimos com mais de 4 semanas são apagados automaticamente (mantendo sempre as últimas 4 semanas).</p>
+        </div>
+      </section>
+
+      <!-- TAB: LOG -->
+      <section id="tab-log" class="tab-section">
+        <div class="panel">
+          <h2>Log de atividades</h2>
+          <div class="filters-row">
+            <label>Usuário
+              <div class="combo" id="combo-log-filter-user">
+                <input type="text" class="combo-input" autocomplete="off" placeholder="Todos">
+                <input type="hidden" id="log-filter-user">
+                <div class="combo-menu" hidden></div>
+              </div>
+            </label>
+            <label>Ação
+              <div class="combo" id="combo-log-filter-action">
+                <input type="text" class="combo-input" autocomplete="off" placeholder="Todas">
+                <input type="hidden" id="log-filter-action">
+                <div class="combo-menu" hidden></div>
+              </div>
+            </label>
+            <label>Data
+              <input id="log-filter-date" type="date">
+            </label>
+            <label>Buscar
+              <input id="log-filter-search" type="text" placeholder="Ex: empréstimo, categoria...">
+            </label>
+            <button id="log-filter-clear" class="btn small ghost">Limpar filtros</button>
+          </div>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead><tr><th>Data/Hora</th><th>Usuário</th><th>Ação</th><th>Detalhes</th></tr></thead>
+              <tbody id="log-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB: ADMINISTRAÇÃO -->
+      <section id="tab-admin" class="tab-section">
+        <div id="admin-panel">
+          <div class="panel">
+            <h2>Colaboradores</h2>
+            <form id="user-form" class="form-grid">
+              <label>Nome completo <input id="user-name" type="text" required></label>
+              <label>Usuário <input id="user-username" type="text" required></label>
+              <label>Senha <input id="user-password" type="password" required minlength="4"></label>
+              <label>Perfil
+                <select id="user-role">
+                  <option value="colaborador">Colaborador</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </label>
+              <div class="form-actions"><button type="submit" class="btn primary">Adicionar colaborador</button></div>
+            </form>
+            <div class="table-scroll">
+              <table class="data-table">
+                <thead><tr><th>Nome</th><th>Usuário</th><th>Perfil</th><th>Ações</th></tr></thead>
+                <tbody id="users-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h2>Categorias de itens</h2>
+            <form id="category-form" class="form-grid">
+              <label>Nome da categoria <input id="category-name" type="text" required></label>
+              <div class="form-actions"><button type="submit" class="btn primary">Adicionar categoria</button></div>
+            </form>
+            <div class="table-scroll">
+              <table class="data-table">
+                <thead><tr><th>Categoria</th><th>Ações</th></tr></thead>
+                <tbody id="categories-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h2>Itens</h2>
+            <form id="item-form" class="form-grid">
+              <label>Nome do item <input id="item-name" type="text" required></label>
+              <label>Categoria <select id="item-category" required></select></label>
+              <div class="form-actions"><button type="submit" class="btn primary">Adicionar item</button></div>
+            </form>
+            <div class="table-scroll">
+              <table class="data-table">
+                <thead><tr><th>Item</th><th>Categoria</th><th>Ações</th></tr></thead>
+                <tbody id="items-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Modal: trocar senha -->
+  <dialog id="pwd-dialog">
+    <form id="pwd-form" class="form-grid">
+      <h2>Trocar senha</h2>
+      <label>Senha atual <input id="pwd-current" type="password" required></label>
+      <label>Nova senha <input id="pwd-new" type="password" required minlength="4"></label>
+      <p id="pwd-dialog-error" class="error-msg"></p>
+      <div class="form-actions">
+        <button type="button" id="pwd-cancel-btn" class="btn ghost">Cancelar</button>
+        <button type="submit" class="btn primary">Salvar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="js/print.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
