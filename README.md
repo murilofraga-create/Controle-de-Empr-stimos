@@ -26,11 +26,19 @@ Login padrão: usuário `admin`, senha `admin123` — troque assim que entrar
 
 ## Publicar na VM (acesso pela rede)
 
-1. **Copie a pasta do projeto para a VM** — **sem** a pasta `node_modules`
-   (ela tem binários nativos do SQLite compilados para o sistema; instalar
-   direto na VM garante que combinem com o SO/arquitetura dela).
-2. Na VM, instale o Node.js LTS (mesmo passo de "rodar localmente").
-3. Na pasta do projeto, dentro da VM: `npm install`.
+O código fica num repositório git privado — a VM clona de lá em vez de
+receber a pasta copiada manualmente. Isso também deixa atualizações futuras
+simples (ver "Atualizar a VM" abaixo).
+
+1. Na VM, instale o [Git](https://git-scm.com/download/win) e o Node.js LTS
+   (mesmo passo de "rodar localmente").
+2. Clone o repositório:
+   ```
+   git clone <URL-do-repositório> C:\ControleEmprestimos
+   cd C:\ControleEmprestimos
+   ```
+3. Instale as dependências (rodando direto na VM garante que qualquer parte
+   nativa combine com o SO/arquitetura dela): `npm install`.
 4. Defina um IP fixo (ou reserva de DHCP) para a VM, para o endereço não mudar.
 5. Rode o servidor como **serviço do Windows**, para ele ficar de pé mesmo
    sem ninguém logado e voltar sozinho se a VM reiniciar. Usando
@@ -62,6 +70,23 @@ adicionar um certificado HTTPS depois, se quiser.
 - `SESSION_SECRET` — chave fixa para as sessões de login. Sem ela, uma chave
   aleatória é gerada a cada reinício do servidor e todo mundo precisa logar
   de novo; definindo um valor fixo, as sessões sobrevivem a reinícios.
+
+## Atualizar a VM
+
+Quando o código do repositório mudar, na VM:
+```
+cd C:\ControleEmprestimos
+git pull
+npm install
+```
+(o `npm install` só faz diferença se as dependências tiverem mudado — não tem
+problema rodar sempre por garantia). Depois, reinicie o serviço:
+```
+nssm restart ControleEmprestimos
+```
+Os dados (`data/app.db`) não são afetados pelo `git pull` — esse arquivo não
+faz parte do repositório (fica de fora via `.gitignore`), então fica intacto
+entre atualizações.
 
 ## Backup
 
