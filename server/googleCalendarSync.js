@@ -3,10 +3,16 @@ const fs = require('fs');
 const { google } = require('googleapis');
 const { db, uid, addLogEntry, todayStr, shiftForTime } = require('./db');
 
-const CREDENTIALS_PATH = process.env.GOOGLE_SERVICE_ACCOUNT_KEY_PATH
-  || path.join(__dirname, 'credentials', 'google-service-account.json');
+const CREDENTIALS_DIR = path.join(__dirname, 'credentials');
+const SERVICE_ACCOUNT_PATH = process.env.GOOGLE_SERVICE_ACCOUNT_KEY_PATH
+  || path.join(CREDENTIALS_DIR, 'google-service-account.json');
+const OAUTH_CLIENT_PATH = process.env.GOOGLE_OAUTH_CLIENT_PATH
+  || path.join(CREDENTIALS_DIR, 'google-oauth-client.json');
+const OAUTH_TOKEN_PATH = process.env.GOOGLE_OAUTH_TOKEN_PATH
+  || path.join(CREDENTIALS_DIR, 'google-oauth-token.json');
 const CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID
   || 'italo.br_aqfig3olpfjmm4fb904ges9t5g@group.calendar.google.com';
+const SCOPES = ['https://www.googleapis.com/auth/calendar.readonly'];
 
 let warnedMissingCredentials = false;
 
@@ -45,21 +51,31 @@ function parseEventTitle(title) {
   return { room, person, item: afterTime, startTime };
 }
 
+// Preferimos OAuth (login da própria pessoa que já enxerga a agenda) porque
+// nem sempre é possível compartilhar a agenda com a conta de serviço no nível
+// "todos os detalhes", nem autorizar delegação em todo o domínio (exige
+// Super Admin do Workspace). Se os arquivos de OAuth não existirem, cai para
+// conta de serviço como alternativa.
 function getAuthClient() {
-  if (!fs.existsSync(CREDENTIALS_PATH)) return null;
-  const key = JSON.parse(fs.readFileSync(CREDENTIALS_PATH, 'utf8'));
-  return new google.auth.JWT({
-    email: key.client_email,
-    key: key.private_key,
-    scopes: ['https://www.googleapis.com/auth/calendar.readonly'],
-  });
+  if (fs.existsSync(OAUTH_CLIENT_PATH) && fs.existsSync(OAUTH_TOKEN_PATH)) {
+    const clientConfig = JSON.parse(fs.readFileSync(OAUTH_CLIENT_PATH, 'utf8'));
+    const { client_id, client_secret, redirect_uris } = clientConfig.installed || clientConfig.web || {};
+    const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris && redirect_uris[0]);
+    oAuth2Client.setCredentials(JSON.parse(fs.readFileSync(OAUTH_TOKEN_PATH, 'utf8')));
+    return oAuth2Client;
+  }
+  if (fs.existsSync(SERVICE_ACCOUNT_PATH)) {
+    const key = JSON.parse(fs.readFileSync(SERVICE_ACCOUNT_PATH, 'utf8'));
+    return new google.auth.JWT({ email: key.client_email, key: key.private_key, scopes: SCOPES });
+  }
+  return null;
 }
 
 async function syncCalendarEvents() {
   const auth = getAuthClient();
   if (!auth) {
     if (!warnedMissingCredentials) {
-      console.warn(`[agenda] Chave de conta de serviço não encontrada em ${CREDENTIALS_PATH} — sincronização com a Agenda desativada.`);
+      console.warn(`[agenda] Nenhuma credencial encontrada (OAuth em ${OAUTH_TOKEN_PATH} ou conta de serviço em ${SERVICE_ACCOUNT_PATH}) — sincronização com a Agenda desativada.`);
       warnedMissingCredentials = true;
     }
     return;
@@ -123,4 +139,4 @@ async function syncCalendarEvents() {
   }
 }
 
-module.exports = { syncCalendarEvents, parseEventTitle, CALENDAR_ID, CREDENTIALS_PATH };
+module.exports = { syncCalendarEvents, parseEventTitle, CALENDAR_ID, SERVICE_ACCOUNT_PATH, OAUTH_CLIENT_PATH, OAUTH_TOKEN_PATH };

@@ -91,21 +91,39 @@ sempre lançada como "Aula". O item entra como texto livre (sem precisar
 existir no catálogo) — eventos cujo título não bate com esse formato são
 ignorados e ficam registrados no Log de Atividades para conferência manual.
 
-**Configuração necessária** (feita uma vez por um administrador do Google
-Workspace):
-1. Criar um projeto no Google Cloud e ativar a **Google Calendar API**.
-2. Criar uma **conta de serviço** e gerar uma chave no formato **JSON**.
-3. Dar à conta de serviço acesso de leitura à agenda — compartilhando a
-   agenda diretamente com o e-mail da conta de serviço, **ou** (se você não
-   for dono da agenda) autorizando **Delegação em todo o domínio** no Admin
-   Console do Workspace para a conta de serviço.
-4. Salvar o arquivo `.json` da chave em `server/credentials/google-service-account.json`
-   (a pasta `server/credentials/` já está fora do controle de versão via
-   `.gitignore` — nunca comitar essa chave).
+**Autenticação com o Google**: há duas formas, o servidor tenta OAuth primeiro
+e cai para conta de serviço se os arquivos de OAuth não existirem.
 
-Sem esse arquivo presente, o servidor simplesmente registra um aviso no
-console e segue funcionando normalmente — a sincronização fica desativada
-até a chave ser colocada no lugar.
+### Opção A — OAuth com login próprio (recomendado quando não há acesso de
+Super Admin do Workspace nem permissão pra compartilhar a agenda com "todos
+os detalhes")
+
+1. No Google Cloud Console (mesmo projeto onde a Calendar API foi ativada):
+   **APIs e Serviços** → **Credenciais** → **Criar credenciais** →
+   **ID do cliente OAuth** → tipo **"App para computador"**.
+2. Baixe o JSON gerado e salve em `server/credentials/google-oauth-client.json`.
+3. Rode a configuração única (abre o navegador pra você logar com a conta que
+   já tem acesso à agenda):
+   ```
+   npm run setup:google-oauth
+   ```
+   Isso salva `server/credentials/google-oauth-token.json` — dali pra frente,
+   o servidor usa esse token automaticamente (e o renova sozinho).
+
+### Opção B — Conta de serviço (exige poder compartilhar a agenda com "ver
+todos os detalhes do evento", ou um Super Admin autorizar Delegação em todo o
+domínio no Workspace)
+
+1. Criar uma **conta de serviço** no mesmo projeto e gerar uma chave **JSON**.
+2. Compartilhar a agenda com o e-mail da conta de serviço (permissão "ver
+   todos os detalhes do evento") **ou** autorizar Delegação em todo o domínio.
+3. Salvar o arquivo `.json` da chave em `server/credentials/google-service-account.json`.
+
+Em ambos os casos, `server/credentials/` já está fora do controle de versão
+via `.gitignore` — nunca comitar esses arquivos. Sem nenhuma credencial
+presente, o servidor apenas registra um aviso no console e segue funcionando
+normalmente, com a sincronização desativada até algum dos arquivos ser
+colocado no lugar.
 
 ## Atualizar a VM
 
