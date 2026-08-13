@@ -64,6 +64,15 @@ db.exec(`
     key TEXT PRIMARY KEY,
     value TEXT
   );
+
+  -- Marca linhas de descrição de eventos da Agenda já processadas (importadas
+  -- com sucesso ou não), pra não reprocessar/relogar a cada ciclo de sync.
+  -- Independente da tabela loans, pra não poluir a lista de empréstimos com
+  -- registros falsos só de controle.
+  CREATE TABLE IF NOT EXISTS calendar_synced_lines (
+    id TEXT PRIMARY KEY,
+    created_at TEXT NOT NULL
+  );
 `);
 
 // Migração leve para bancos criados antes da sincronização com a Agenda:

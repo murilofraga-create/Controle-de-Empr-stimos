@@ -16,39 +16,80 @@ const SCOPES = ['https://www.googleapis.com/auth/calendar.readonly'];
 
 let warnedMissingCredentials = false;
 
-// Formato do evento na agenda: "B401 PROF. KERSON 8:50 ás 11:35 MICROFONE"
-// sala | professor/funcionário | horário (usamos o início pra achar o turno) | item
-// O item vem como texto livre (sem validar contra o catálogo de itens) porque
-// professores não escrevem de forma padronizada — diferente do lançamento
-// manual, que só aceita itens já cadastrados.
-const TIME_RANGE_RE = /(\d{1,2}:\d{2})\s*(?:ás|as|à|a|-|até)\s*(\d{1,2}:\d{2})/i;
+// A descrição de um evento pode conter VÁRIOS agendamentos (um por linha,
+// separados por <br>), em HTML, com variações reais observadas no formato:
+//   "A107 - AULA - Prof. LUISA - 8:50 ás 11:35 (NOTE BOOK)"
+//   "B104  PROF. KERSON 8:50 ás 11:35 MICROFONE"
+//   "B201  Aula profª Laura  15h ás 17hs (CX.SOM e CABO P2P10)"
+// sala | (opcional "AULA"/traços de separação, ignorados) | professor/funcionário
+// | horário (com ":" ou só "Xh"/"Xhs"; usamos o início pra achar o turno) | item
+// (entre parênteses quando presente, senão o texto que sobra). O item vem
+// como texto livre (sem validar contra o catálogo) porque quem preenche a
+// agenda não escreve de forma padronizada — diferente do lançamento manual,
+// que só aceita itens já cadastrados.
+const TIME_TOKEN = '\\d{1,2}(?::\\d{2})?\\s*h?s?';
+const TIME_RANGE_RE = new RegExp(`(${TIME_TOKEN})\\s*(?:ás|as|à|a|-|até)\\s*(${TIME_TOKEN})`, 'i');
 
-function normalizeTime(hhmm) {
-  const [h, m] = hhmm.split(':');
-  const hh = String(h).padStart(2, '0');
-  const mm = String(m).padStart(2, '0');
-  if (Number(hh) > 23 || Number(mm) > 59) return null;
-  return `${hh}:${mm}`;
+function stripHtml(html) {
+  return String(html || '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/gi, ' ');
 }
 
-function parseEventTitle(title) {
-  const text = (title || '').trim();
+function normalizeTime(raw) {
+  const cleaned = raw.trim().toLowerCase();
+  const colonMatch = cleaned.match(/^(\d{1,2}):(\d{2})/);
+  if (colonMatch) {
+    const hh = colonMatch[1].padStart(2, '0');
+    const mm = colonMatch[2];
+    if (Number(hh) > 23 || Number(mm) > 59) return null;
+    return `${hh}:${mm}`;
+  }
+  const hourMatch = cleaned.match(/^(\d{1,2})\s*h/);
+  if (hourMatch) {
+    const hh = hourMatch[1].padStart(2, '0');
+    if (Number(hh) > 23) return null;
+    return `${hh}:00`;
+  }
+  return null;
+}
+
+function parseBookingLine(rawLine) {
+  const text = rawLine.replace(/\s+/g, ' ').trim();
   if (!text) return null;
 
   const match = text.match(TIME_RANGE_RE);
   if (!match) return null;
 
-  const beforeTime = text.slice(0, match.index).trim();
+  let beforeTime = text.slice(0, match.index).trim();
   const afterTime = text.slice(match.index + match[0].length).trim();
-  const spaceIdx = beforeTime.indexOf(' ');
-  if (spaceIdx === -1 || !afterTime) return null;
 
+  // remove ruído comum antes do horário: "AULA" e traços usados como separador
+  beforeTime = beforeTime.replace(/\bAULA\b/gi, ' ').replace(/-+/g, ' ').replace(/\s+/g, ' ').trim();
+
+  const spaceIdx = beforeTime.indexOf(' ');
+  if (spaceIdx === -1) return null;
   const room = beforeTime.slice(0, spaceIdx).trim();
   const person = beforeTime.slice(spaceIdx + 1).trim();
-  const startTime = normalizeTime(match[1]);
-  if (!room || !person || !startTime) return null;
 
-  return { room, person, item: afterTime, startTime };
+  const parenMatch = afterTime.match(/\(([^)]+)\)/);
+  const item = (parenMatch ? parenMatch[1] : afterTime).trim();
+
+  const startTime = normalizeTime(match[1]);
+  if (!room || !person || !item || !startTime) return null;
+
+  return { room, person, item, startTime };
+}
+
+// Um evento pode ter mais de um agendamento na descrição — cada linha vira
+// um item potencial da lista retornada.
+function parseEventDescription(description) {
+  return stripHtml(description)
+    .split('\n')
+    .map(line => line.trim())
+    .filter(Boolean)
+    .map(parseBookingLine);
 }
 
 // Preferimos OAuth (login da própria pessoa que já enxerga a agenda) porque
@@ -101,42 +142,59 @@ async function syncCalendarEvents() {
     return;
   }
 
+  const markLineSeen = (eventLineId) => {
+    db.prepare('INSERT OR IGNORE INTO calendar_synced_lines (id, created_at) VALUES (?, ?)').run(eventLineId, new Date().toISOString());
+  };
+  const lineAlreadySeen = (eventLineId) => Boolean(db.prepare('SELECT 1 FROM calendar_synced_lines WHERE id = ?').get(eventLineId));
+
   for (const event of events) {
     if (!event.id || !event.start) continue;
 
-    const exists = db.prepare('SELECT 1 FROM loans WHERE calendar_event_id = ?').get(event.id);
-    if (exists) continue;
-
-    const parsed = parseEventTitle(event.summary);
-    if (!parsed) {
-      addLogEntry('Sistema (Agenda)', 'Falha ao importar evento da agenda', `Não consegui interpretar o formato: "${event.summary || '(sem título)'}".`);
+    const parsedLines = parseEventDescription(event.description);
+    if (parsedLines.length === 0) {
+      const eventLineId = `${event.id}#0`;
+      if (!lineAlreadySeen(eventLineId)) {
+        markLineSeen(eventLineId);
+        addLogEntry('Sistema (Agenda)', 'Falha ao importar evento da agenda', `Não consegui interpretar o formato: "${event.summary || '(sem descrição)'}".`);
+      }
       continue;
     }
 
-    const shift = shiftForTime(parsed.startTime);
-    const loan = {
-      id: uid('loan'),
-      date: today,
-      time: parsed.startTime,
-      room: parsed.room,
-      person: parsed.person,
-      occurrence_type: 'Aula',
-      item_name: parsed.item,
-      category_name: '',
-      shift,
-      status: 'Pendente',
-      registered_by: 'Sistema (Agenda)',
-      registered_at: new Date().toISOString(),
-      calendar_event_id: event.id,
-    };
+    parsedLines.forEach((parsed, index) => {
+      const eventLineId = `${event.id}#${index}`;
+      if (lineAlreadySeen(eventLineId)) return;
+      markLineSeen(eventLineId);
 
-    db.prepare(`
-      INSERT INTO loans (id, date, time, room, person, occurrence_type, item_name, category_name, shift, status, registered_by, registered_at, calendar_event_id)
-      VALUES (@id, @date, @time, @room, @person, @occurrence_type, @item_name, @category_name, @shift, @status, @registered_by, @registered_at, @calendar_event_id)
-    `).run(loan);
+      if (!parsed) {
+        addLogEntry('Sistema (Agenda)', 'Falha ao importar evento da agenda', `Não consegui interpretar o formato: "${event.summary || '(sem título)'}" (linha ${index + 1} da descrição).`);
+        return;
+      }
 
-    addLogEntry('Sistema (Agenda)', 'Empréstimo importado da agenda', `${loan.item_name} para ${loan.person} (sala ${loan.room}, turno ${loan.shift}).`);
+      const shift = shiftForTime(parsed.startTime);
+      const loan = {
+        id: uid('loan'),
+        date: today,
+        time: parsed.startTime,
+        room: parsed.room,
+        person: parsed.person,
+        occurrence_type: 'Aula',
+        item_name: parsed.item,
+        category_name: '',
+        shift,
+        status: 'Pendente',
+        registered_by: 'Sistema (Agenda)',
+        registered_at: new Date().toISOString(),
+        calendar_event_id: eventLineId,
+      };
+
+      db.prepare(`
+        INSERT INTO loans (id, date, time, room, person, occurrence_type, item_name, category_name, shift, status, registered_by, registered_at, calendar_event_id)
+        VALUES (@id, @date, @time, @room, @person, @occurrence_type, @item_name, @category_name, @shift, @status, @registered_by, @registered_at, @calendar_event_id)
+      `).run(loan);
+
+      addLogEntry('Sistema (Agenda)', 'Empréstimo importado da agenda', `${loan.item_name} para ${loan.person} (sala ${loan.room}, turno ${loan.shift}).`);
+    });
   }
 }
 
-module.exports = { syncCalendarEvents, parseEventTitle, CALENDAR_ID, SERVICE_ACCOUNT_PATH, OAUTH_CLIENT_PATH, OAUTH_TOKEN_PATH };
+module.exports = { syncCalendarEvents, parseEventDescription, parseBookingLine, CALENDAR_ID, SERVICE_ACCOUNT_PATH, OAUTH_CLIENT_PATH, OAUTH_TOKEN_PATH };
