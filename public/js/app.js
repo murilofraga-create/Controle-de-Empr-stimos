@@ -332,6 +332,25 @@ function getFilteredLoans(loans) {
   });
 }
 
+const SHIFT_ORDER = { Madrugada: 0, Matutino: 1, Vespertino: 2, Noturno: 3 };
+
+// Itens trazidos pelo agente da Agenda sempre no topo, ordenados por turno
+// (Madrugada/Matutino/Vespertino/Noturno); os demais mantêm a ordem que já
+// vinham (mais recentes primeiro), abaixo do bloco da agenda.
+function sortLoansForDisplay(loans) {
+  return [...loans].sort((a, b) => {
+    const aFromAgenda = a.calendar_event_id ? 0 : 1;
+    const bFromAgenda = b.calendar_event_id ? 0 : 1;
+    if (aFromAgenda !== bFromAgenda) return aFromAgenda - bFromAgenda;
+    if (aFromAgenda === 0) {
+      const shiftDiff = (SHIFT_ORDER[a.shift] ?? 99) - (SHIFT_ORDER[b.shift] ?? 99);
+      if (shiftDiff !== 0) return shiftDiff;
+      return (a.time || '').localeCompare(b.time || '');
+    }
+    return 0;
+  });
+}
+
 async function renderLoansList() {
   const [loansResp, categoriesResp] = await Promise.all([
     api('GET', '/api/loans'),
@@ -359,7 +378,7 @@ const CALENDAR_ICON_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill=
   '</svg>';
 
 function renderLoansTable() {
-  const loans = getFilteredLoans(loansCache);
+  const loans = sortLoansForDisplay(getFilteredLoans(loansCache));
   const tbody = document.getElementById('loans-tbody');
 
   if (loans.length === 0) {
@@ -456,10 +475,10 @@ function bindFilters() {
 
 function bindPrintButtons() {
   document.getElementById('print-filtered-btn').addEventListener('click', () => {
-    printLoans(getFilteredLoans(loansCache), 'Lista de Empréstimos (filtrada)');
+    printLoans(sortLoansForDisplay(getFilteredLoans(loansCache)), 'Lista de Empréstimos (filtrada)');
   });
   document.getElementById('print-all-btn').addEventListener('click', () => {
-    printLoans(loansCache, 'Lista de Empréstimos (completa)');
+    printLoans(sortLoansForDisplay(loansCache), 'Lista de Empréstimos (completa)');
   });
 }
 
