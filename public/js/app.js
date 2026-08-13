@@ -348,6 +348,16 @@ async function renderLoansList() {
   renderLoansTable();
 }
 
+const CALENDAR_ICON_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="flex-shrink:0" aria-hidden="true">' +
+  '<rect x="3" y="4" width="18" height="17" rx="3" fill="#4285F4" fill-opacity="0.18" stroke="#4285F4" stroke-width="1.6"/>' +
+  '<rect x="3" y="4" width="18" height="5" rx="2" fill="#4285F4"/>' +
+  '<line x1="7" y1="2.5" x2="7" y2="6" stroke="#ffffff" stroke-width="1.6" stroke-linecap="round"/>' +
+  '<line x1="17" y1="2.5" x2="17" y2="6" stroke="#ffffff" stroke-width="1.6" stroke-linecap="round"/>' +
+  '<circle cx="8" cy="14" r="1.3" fill="#4285F4"/>' +
+  '<circle cx="12" cy="14" r="1.3" fill="#4285F4"/>' +
+  '<circle cx="16" cy="14" r="1.3" fill="#4285F4"/>' +
+  '</svg>';
+
 function renderLoansTable() {
   const loans = getFilteredLoans(loansCache);
   const tbody = document.getElementById('loans-tbody');
@@ -368,14 +378,20 @@ function renderLoansTable() {
       ? `<button class="btn small danger" data-action="delete" data-id="${l.id}">Excluir</button>`
       : '';
 
+    const fromAgenda = Boolean(l.calendar_event_id);
+    const rowClasses = [l.overdue ? 'row-overdue' : '', fromAgenda ? 'row-agenda' : ''].filter(Boolean).join(' ');
+    const dateCell = fromAgenda
+      ? `<span style="display:inline-flex; align-items:center; gap:6px;" title="Adicionado pela Agenda">${CALENDAR_ICON_SVG}<span>${l.date}</span></span><br><span class="muted">${l.time}</span>`
+      : `${l.date}<br><span class="muted">${l.time}</span>`;
+
     return `
-      <tr class="${l.overdue ? 'row-overdue' : ''}">
-        <td>${l.date}<br><span class="muted">${l.time}</span></td>
+      <tr class="${rowClasses}">
+        <td>${dateCell}</td>
         <td>${escapeHtml(l.room)}</td>
         <td>${escapeHtml(l.person)}</td>
         <td>${l.occurrence_type}</td>
         <td>${escapeHtml(l.item_name)}</td>
-        <td>${escapeHtml(l.category_name)}</td>
+        <td>${l.category_name ? escapeHtml(l.category_name) : '—'}</td>
         <td>${l.shift}</td>
         <td><span class="badge badge-${l.status.toLowerCase()}">${l.status}${l.overdue ? ' (atrasado)' : ''}</span></td>
         <td>${escapeHtml(l.registered_by)}</td>

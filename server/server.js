@@ -7,10 +7,14 @@ const {
   db, uid, seedIfEmpty, addLogEntry, listLog, runWeeklyCleanupIfNeeded,
   isLoanOverdue, todayStr, SHIFTS,
 } = require('./db');
+const { syncCalendarEvents } = require('./googleCalendarSync');
 
 seedIfEmpty();
 runWeeklyCleanupIfNeeded();
 setInterval(runWeeklyCleanupIfNeeded, 15 * 60 * 1000); // confere a cada 15 min; só age de fato no domingo
+
+syncCalendarEvents().catch(err => console.error('[agenda]', err));
+setInterval(() => syncCalendarEvents().catch(err => console.error('[agenda]', err)), 15 * 60 * 1000);
 
 const app = express();
 const PORT = process.env.PORT || 3000;

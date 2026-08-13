@@ -48,7 +48,8 @@ db.exec(`
     delivered_by TEXT,
     delivered_at TEXT,
     returned_by TEXT,
-    returned_at TEXT
+    returned_at TEXT,
+    calendar_event_id TEXT
   );
 
   CREATE TABLE IF NOT EXISTS activity_log (
@@ -64,6 +65,13 @@ db.exec(`
     value TEXT
   );
 `);
+
+// Migração leve para bancos criados antes da sincronização com a Agenda:
+// CREATE TABLE IF NOT EXISTS não altera uma tabela já existente.
+const loanColumns = db.prepare('PRAGMA table_info(loans)').all().map(c => c.name);
+if (!loanColumns.includes('calendar_event_id')) {
+  db.exec('ALTER TABLE loans ADD COLUMN calendar_event_id TEXT');
+}
 
 function uid(prefix) {
   return `${prefix}_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
@@ -103,6 +111,35 @@ function getOverdueThreshold(dateStr, shift) {
 function isLoanOverdue(loan) {
   if (loan.status === 'Devolvido') return false;
   return new Date() >= getOverdueThreshold(loan.date, loan.shift);
+}
+
+function timeToMinutes(hhmm) {
+  const [h, m] = hhmm.split(':').map(Number);
+  return h * 60 + m;
+}
+
+// Turno pelo horário de início de um evento (ex.: importado da agenda). Se o
+// horário cair numa lacuna entre dois turnos (ex.: 18:00–18:30), assume o
+// turno cujo início está mais próximo em seguida, cronologicamente.
+function shiftForTime(hhmm) {
+  const minutes = timeToMinutes(hhmm);
+  for (const shift of SHIFTS) {
+    const start = timeToMinutes(SHIFT_TIMES[shift].start);
+    const end = timeToMinutes(SHIFT_TIMES[shift].end);
+    if (minutes >= start && minutes < end) return shift;
+  }
+  let best = SHIFTS[0];
+  let bestDiff = Infinity;
+  for (const shift of SHIFTS) {
+    const start = timeToMinutes(SHIFT_TIMES[shift].start);
+    let diff = start - minutes;
+    if (diff < 0) diff += 24 * 60;
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      best = shift;
+    }
+  }
+  return best;
 }
 
 function todayStr() {
@@ -166,6 +203,7 @@ module.exports = {
   runWeeklyCleanupIfNeeded,
   isLoanOverdue,
   getOverdueThreshold,
+  shiftForTime,
   todayStr,
   SHIFTS,
   SHIFT_TIMES,

@@ -70,6 +70,42 @@ adicionar um certificado HTTPS depois, se quiser.
 - `SESSION_SECRET` — chave fixa para as sessões de login. Sem ela, uma chave
   aleatória é gerada a cada reinício do servidor e todo mundo precisa logar
   de novo; definindo um valor fixo, as sessões sobrevivem a reinícios.
+- `GOOGLE_SERVICE_ACCOUNT_KEY_PATH` — caminho do arquivo `.json` da conta de
+  serviço do Google (ver "Sincronização com a Agenda" abaixo). Padrão:
+  `server/credentials/google-service-account.json`.
+- `GOOGLE_CALENDAR_ID` — ID da agenda do Google a sincronizar. Sem essa
+  variável, usa o ID já configurado no código.
+
+## Sincronização com a Agenda do Google
+
+O servidor confere a agenda de salas a cada 15 minutos e importa
+automaticamente os agendamentos do dia como empréstimos "Pendente" — sem
+etapa de revisão manual. Cada evento é identificado pelo seu ID do Google
+Calendar, então reimportações não duplicam o mesmo evento.
+
+**Formato esperado no título do evento**: `SALA PROFESSOR HH:MM às HH:MM ITEM`
+(ex.: `B401 PROF. KERSON 8:50 ás 11:35 MICROFONE`). O horário de início
+determina o turno (mesma janela usada para calcular atraso); se cair numa
+lacuna entre turnos, assume o turno seguinte mais próximo. A ocorrência é
+sempre lançada como "Aula". O item entra como texto livre (sem precisar
+existir no catálogo) — eventos cujo título não bate com esse formato são
+ignorados e ficam registrados no Log de Atividades para conferência manual.
+
+**Configuração necessária** (feita uma vez por um administrador do Google
+Workspace):
+1. Criar um projeto no Google Cloud e ativar a **Google Calendar API**.
+2. Criar uma **conta de serviço** e gerar uma chave no formato **JSON**.
+3. Dar à conta de serviço acesso de leitura à agenda — compartilhando a
+   agenda diretamente com o e-mail da conta de serviço, **ou** (se você não
+   for dono da agenda) autorizando **Delegação em todo o domínio** no Admin
+   Console do Workspace para a conta de serviço.
+4. Salvar o arquivo `.json` da chave em `server/credentials/google-service-account.json`
+   (a pasta `server/credentials/` já está fora do controle de versão via
+   `.gitignore` — nunca comitar essa chave).
+
+Sem esse arquivo presente, o servidor simplesmente registra um aviso no
+console e segue funcionando normalmente — a sincronização fica desativada
+até a chave ser colocada no lugar.
 
 ## Atualizar a VM
 
