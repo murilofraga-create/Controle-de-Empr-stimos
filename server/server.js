@@ -249,7 +249,7 @@ app.post('/api/loans/:id/return', requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
-app.delete('/api/loans/:id', requireAuth, requireAdmin, (req, res) => {
+app.delete('/api/loans/:id', requireAuth, (req, res) => {
   const loan = db.prepare('SELECT * FROM loans WHERE id = ?').get(req.params.id);
   if (!loan) return res.status(404).json({ message: 'Empréstimo não encontrado.' });
   db.prepare('DELETE FROM loans WHERE id = ?').run(loan.id);

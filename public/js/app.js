@@ -321,12 +321,14 @@ function getFilteredLoans(loans) {
   const shift = document.getElementById('filter-shift').value;
   const category = document.getElementById('filter-category').value;
   const status = document.getElementById('filter-status').value;
+  const date = document.getElementById('filter-date').value;
   const search = document.getElementById('filter-search').value.trim().toLowerCase();
 
   return loans.filter(l => {
     if (shift && l.shift !== shift) return false;
     if (category && l.category_name !== category) return false;
     if (status && l.status !== status) return false;
+    if (date && l.date !== date) return false;
     if (search && !`${l.room} ${l.person}`.toLowerCase().includes(search)) return false;
     return true;
   });
@@ -393,9 +395,7 @@ function renderLoansTable() {
     } else if (l.status === 'Emprestado') {
       actionBtn = `<button class="btn small" data-action="return" data-id="${l.id}">Dar baixa</button>`;
     }
-    const deleteBtn = currentUser.role === 'admin'
-      ? `<button class="btn small danger" data-action="delete" data-id="${l.id}">Excluir</button>`
-      : '';
+    const deleteBtn = `<button class="btn small danger" data-action="delete" data-id="${l.id}">Excluir</button>`;
 
     const fromAgenda = Boolean(l.calendar_event_id);
     const rowClasses = [l.overdue ? 'row-overdue' : '', fromAgenda ? 'row-agenda' : ''].filter(Boolean).join(' ');
@@ -441,13 +441,14 @@ function bindFilters() {
   comboFilterCategory = createCombo('combo-filter-category');
   comboFilterCategory.setOptions([{ label: 'Todas as categorias', value: '' }]);
 
-  ['filter-shift', 'filter-category', 'filter-status', 'filter-search'].forEach(id => {
+  ['filter-shift', 'filter-category', 'filter-status', 'filter-date', 'filter-search'].forEach(id => {
     document.getElementById(id).addEventListener('input', renderLoansTable);
   });
   document.getElementById('filter-clear').addEventListener('click', () => {
     comboFilterShift.selectValue('', { silent: true });
     comboFilterCategory.selectValue('', { silent: true });
     comboFilterStatus.selectValue('', { silent: true });
+    document.getElementById('filter-date').value = '';
     document.getElementById('filter-search').value = '';
     renderLoansTable();
   });
