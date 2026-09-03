@@ -30,6 +30,14 @@ let warnedMissingCredentials = false;
 const TIME_TOKEN = '\\d{1,2}(?::\\d{2}|h\\d{2})?\\s*h?s?';
 const TIME_RANGE_RE = new RegExp(`(${TIME_TOKEN})\\s*(?:ás|as|à|a|-|até)\\s*(${TIME_TOKEN})`, 'i');
 
+// Código de sala: "LAB" sozinho, ou letra(s)+número (A101, B002, L12/13). Alguns
+// agendamentos escrevem dois tokens de sala seguidos (ex.: "LAB A101").
+const ROOM_TOKEN_RE = /^(lab|[a-z]+\d+(?:\/\d+)*)$/i;
+// Pronome de tratamento a ignorar do nome da pessoa (abreviado ou por extenso,
+// com ou sem ponto): Prof./Profª/Professor(a), Reitor(a), Coordenador(a),
+// Diretor(a), Dr./Dra.
+const TITLE_RE = /^(prof[aªº]?|professora?|reitora?|coordenadora?|diretora?|dra?)\.?$/i;
+
 function stripHtml(html) {
   return String(html || '')
     .replace(/<br\s*\/?>/gi, '\n')
@@ -76,16 +84,27 @@ function parseBookingLine(rawLine) {
   // remove ruído comum antes do horário: "AULA" e traços usados como separador
   beforeTime = beforeTime.replace(/\bAULA\b/gi, ' ').replace(/-+/g, ' ').replace(/\s+/g, ' ').trim();
 
-  const spaceIdx = beforeTime.indexOf(' ');
-  if (spaceIdx === -1) return null;
-  const room = beforeTime.slice(0, spaceIdx).trim();
-  const person = beforeTime.slice(spaceIdx + 1).trim();
+  const tokens = beforeTime.split(' ').filter(Boolean);
+
+  // sala: consome todos os tokens iniciais que baterem o padrão de código de
+  // sala (cobre "LAB A101", não só "LAB" ou só "A101" isolados)
+  const roomTokens = [];
+  let i = 0;
+  while (i < tokens.length && ROOM_TOKEN_RE.test(tokens[i])) {
+    roomTokens.push(tokens[i]);
+    i += 1;
+  }
+  const room = roomTokens.join(' ');
+
+  // o que sobra é o nome da pessoa, descartando pronomes de tratamento; alguns
+  // agendamentos (ex.: "abrir o lab") não têm pessoa nenhuma, e tudo bem
+  const person = tokens.slice(i).filter(t => !TITLE_RE.test(t)).join(' ');
 
   const parenMatch = afterTime.match(/\(([^)]+)\)/);
   const item = (parenMatch ? parenMatch[1] : afterTime).trim();
 
   const startTime = normalizeTime(match[1]);
-  if (!room || !person || !item || !startTime) return null;
+  if (!room || !item || !startTime) return null;
 
   return { room, person, item, startTime };
 }
@@ -200,7 +219,8 @@ async function syncCalendarEvents() {
         VALUES (@id, @date, @time, @room, @person, @occurrence_type, @item_name, @category_name, @shift, @status, @registered_by, @registered_at, @calendar_event_id)
       `).run(loan);
 
-      addLogEntry('Sistema (Agenda)', 'Empréstimo importado da agenda', `${loan.item_name} para ${loan.person} (sala ${loan.room}, turno ${loan.shift}).`);
+      const personLabel = loan.person || '(sem pessoa identificada)';
+      addLogEntry('Sistema (Agenda)', 'Empréstimo importado da agenda', `${loan.item_name} para ${personLabel} (sala ${loan.room}, turno ${loan.shift}).`);
     });
   }
 }

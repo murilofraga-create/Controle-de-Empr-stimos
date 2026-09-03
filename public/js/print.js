@@ -4,7 +4,7 @@ function printLoans(loans, title) {
       <td>${l.date}</td>
       <td>${l.time}</td>
       <td>${escapeHtml(l.room)}</td>
-      <td>${escapeHtml(l.person)}</td>
+      <td>${l.person ? escapeHtml(l.person) : '—'}</td>
       <td>${escapeHtml(l.occurrence_type)}</td>
       <td>${escapeHtml(l.item_name)}</td>
       <td>${l.category_name ? escapeHtml(l.category_name) : '—'}</td>
