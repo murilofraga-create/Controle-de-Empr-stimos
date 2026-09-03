@@ -28,7 +28,7 @@ let warnedMissingCredentials = false;
 // agenda não escreve de forma padronizada — diferente do lançamento manual,
 // que só aceita itens já cadastrados.
 const TIME_TOKEN = '\\d{1,2}(?::\\d{2}|h\\d{2})?\\s*h?s?';
-const TIME_RANGE_RE = new RegExp(`(${TIME_TOKEN})\\s*(?:ás|as|à|a|-|até)\\s*(${TIME_TOKEN})`, 'i');
+const TIME_RANGE_RE = new RegExp(`(${TIME_TOKEN})\\s*(?:ás|às|as|à|a|-|até)\\s*(${TIME_TOKEN})`, 'i');
 
 // Código de sala: "LAB" sozinho, ou letra(s)+número (A101, B002, L12/13). Alguns
 // agendamentos escrevem dois tokens de sala seguidos (ex.: "LAB A101").
@@ -81,8 +81,14 @@ function parseBookingLine(rawLine) {
   let beforeTime = text.slice(0, match.index).trim();
   const afterTime = text.slice(match.index + match[0].length).trim();
 
-  // remove ruído comum antes do horário: "AULA" e traços usados como separador
-  beforeTime = beforeTime.replace(/\bAULA\b/gi, ' ').replace(/-+/g, ' ').replace(/\s+/g, ' ').trim();
+  // remove ruído comum antes do horário: "AULA", "com o/a" (ex.: "Aula com o
+  // Prof. X") e traços usados como separador
+  beforeTime = beforeTime
+    .replace(/\bAULA\b/gi, ' ')
+    .replace(/\bcom\s+[oa]\b/gi, ' ')
+    .replace(/-+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 
   const tokens = beforeTime.split(' ').filter(Boolean);
 
@@ -96,9 +102,13 @@ function parseBookingLine(rawLine) {
   }
   const room = roomTokens.join(' ');
 
-  // o que sobra é o nome da pessoa, descartando pronomes de tratamento; alguns
-  // agendamentos (ex.: "abrir o lab") não têm pessoa nenhuma, e tudo bem
-  const person = tokens.slice(i).filter(t => !TITLE_RE.test(t)).join(' ');
+  // o que sobra é o nome da pessoa, descartando pronomes de tratamento e
+  // vírgula solta (erro comum de digitação); alguns agendamentos (ex.: "abrir
+  // o lab") não têm pessoa nenhuma, e tudo bem
+  const person = tokens.slice(i)
+    .filter(t => !TITLE_RE.test(t))
+    .map(t => t.replace(/,+$/, ''))
+    .join(' ');
 
   const parenMatch = afterTime.match(/\(([^)]+)\)/);
   const item = (parenMatch ? parenMatch[1] : afterTime).trim();
